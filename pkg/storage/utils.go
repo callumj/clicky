@@ -3,7 +3,6 @@ package storage
 import (
 	"path/filepath"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/callumj/clicky/pkg/config"
@@ -16,5 +15,5 @@ func PathForSnapshot(camera *config.CameraConfig) string {
 }
 
 func pathForCamera(camera *config.CameraConfig) string {
-	return strings.ToLower(camera.Name)
+	return camera.NameForStorage()
 }

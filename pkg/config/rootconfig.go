@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strings"
 
 	"gopkg.in/yaml.v3"
 )
@@ -10,7 +11,10 @@ type RootConfig struct {
 	Cameras  []*CameraConfig `yaml:"cameras"`
 	Snapshot *SnapshotConfig `yaml:"snapshot,omitempty"`
 	Storage  *StorageConfig  `yaml:"storage,omitempty"`
+
+	Tz string `yaml:"tz,omitempty"`
 }
+
 type StorageConfig struct {
 	Local *LocalStorageConfig `yaml:"local,omitempty"`
 	S3    *S3StorageConfig    `yaml:"s3,omitempty"`
@@ -30,6 +34,10 @@ type S3StorageConfig struct {
 type CameraConfig struct {
 	Name        string `yaml:"name"`
 	SnapshotURL string `yaml:"snapshot_url,omitempty"`
+}
+
+func (c *CameraConfig) NameForStorage() string {
+	return strings.ToLower(strings.ReplaceAll(c.Name, " ", "_"))
 }
 
 type SnapshotConfig struct {

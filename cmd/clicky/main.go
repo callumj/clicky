@@ -14,6 +14,7 @@ import (
 	"github.com/callumj/clicky/pkg/config"
 	"github.com/callumj/clicky/pkg/storage"
 	"github.com/callumj/clicky/pkg/storage/local"
+	"github.com/callumj/clicky/pkg/storage/multi"
 	"github.com/callumj/clicky/pkg/storage/s3"
 
 	"github.com/rs/zerolog/log"
@@ -36,15 +37,20 @@ func main() {
 	// initialize storage based on config
 	var storage storage.Storage
 	if cfg.Storage != nil {
+		mStore := multi.NewMultiStorage()
 		if cfg.Storage.S3 != nil {
-			storage, err = s3.NewS3Storage(cfg.Storage.S3)
+			s3Store, err := s3.NewS3Storage(cfg.Storage.S3)
 			if err != nil {
 				log.Fatal().Err(err).Msg("Failed to initialize S3 storage")
 				return
 			}
-		} else if cfg.Storage.Local != nil {
-			storage = local.NewLocalStorage(cfg.Storage.Local)
+			mStore.Register("s3", s3Store)
 		}
+
+		if cfg.Storage.Local != nil {
+			mStore.Register("local", local.NewLocalStorage(cfg.Storage.Local))
+		}
+		storage = mStore
 	}
 
 	if storage == nil {
@@ -61,7 +67,16 @@ func main() {
 	snapshotter := cameras.NewSnapshotterWithClient(client, cfg, storage)
 
 	// create scheduler
-	loc := time.Local
+	var loc *time.Location
+	if cfg.Tz != "" {
+		loc, err = time.LoadLocation(cfg.Tz)
+		if err != nil {
+			log.Fatal().Err(err).Msgf("Failed to load timezone location")
+			return
+		}
+	} else {
+		loc = time.Local // default to local timezone
+	}
 	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
 	if err != nil {
 		log.Fatal().Err(err).Msg("Error creating scheduler")
