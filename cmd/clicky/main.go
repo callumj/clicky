@@ -1,7 +1,9 @@
 package main
 
 import (
+	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"os"
@@ -15,6 +17,9 @@ import (
 	"github.com/callumj/clicky/pkg/storage/s3"
 
 	"github.com/rs/zerolog/log"
+
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/go-co-op/gocron/v2"
 )
@@ -55,6 +60,7 @@ func main() {
 	// initialize snapshotter
 	snapshotter := cameras.NewSnapshotterWithClient(client, cfg, storage)
 
+	// create scheduler
 	loc := time.Local
 	s, err := gocron.NewScheduler(gocron.WithLocation(loc))
 	if err != nil {
@@ -87,6 +93,30 @@ func main() {
 	log.Info().Time("nextRun", nextRun).Msgf("Cron scheduler started")
 	s.Start()
 
+	// initialize web server
+	// Echo instance
+	e := echo.New()
+
+	// Middleware
+	e.Use(middleware.Logger())
+	e.Use(middleware.Recover())
+
+	// attach routes
+	e.POST("/snapshot", func(c echo.Context) error {
+		if err := snapshotter.SaveSnapshots(); err != nil {
+			return c.JSON(http.StatusInternalServerError, map[string]string{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, map[string]string{"status": "snapshots saved"})
+	})
+
+	go func() {
+		if err := e.Start(":8080"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatal().Err(err).Msg("failed to start server")
+			return
+		}
+	}()
+
+	log.Info().Msg("Server started on :8080")
 	done := make(chan os.Signal, 1)
 	signal.Notify(done, os.Interrupt)
 	<-done
@@ -97,5 +127,12 @@ func main() {
 		log.Fatal().Err(err).Msg("Error shutting down scheduler")
 	} else {
 		log.Info().Msg("Scheduler shut down successfully")
+	}
+
+	err = e.Shutdown(context.TODO())
+	if err != nil {
+		log.Fatal().Err(err).Msg("Error shutting down server")
+	} else {
+		log.Info().Msg("Server shut down successfully")
 	}
 }
